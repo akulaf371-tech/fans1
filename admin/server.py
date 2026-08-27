@@ -415,6 +415,16 @@ class Handler(BaseHTTPRequestHandler):
                 save_config(cfg)
                 return self._json({"ok": True, "saved": True})
 
+            if path == "/api/deploy":
+                d = subprocess.run(
+                    ["vercel", "--prod", "--yes"],
+                    cwd=str(SITE_DIR), capture_output=True, text=True, timeout=300,
+                    env={**os.environ, "CI": "1"})
+                out = (d.stdout + d.stderr).strip()
+                ok = d.returncode == 0
+                return self._json({"ok": ok, "log": out[-1200:] if ok else out,
+                                   "error": None if ok else "vercel вернул ошибку"})
+
             return self._json({"ok": False, "error": "unknown api"}, 404)
         except Exception as e:
             import traceback

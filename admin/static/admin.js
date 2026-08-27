@@ -213,10 +213,26 @@ function delPost(id,title){
   });
 }
 
+/* ---------------- деплой на Vercel ---------------- */
+function deploySite(){
+  var btn=$('btnDeploy');
+  btn.disabled=true;
+  var st=$('pubStatus'); setStatus(st,'выкладываю на fans1.vercel.app… (15–40 сек)');
+  fetch('/api/deploy',{method:'POST'})
+    .then(function(r){return r.json();})
+    .then(function(j){
+      btn.disabled=false;
+      if(j.ok){ setStatus(st,'сайт обновлён ✓ https://fans1.vercel.app','okc'); }
+      else { setStatus(st,'ошибка деплоя — см. лог в терминале сервера','err'); console.error(j.log||j.error); }
+    })
+    .catch(function(e){ btn.disabled=false; setStatus(st,'ошибка сети: '+e,'err'); });
+}
+
 /* ---------------- init ---------------- */
 document.addEventListener('DOMContentLoaded', function(){
   loadCfg(); loadPosts(); initDropzone();
   $('btnPublish').onclick=publish;
+  $('btnDeploy').onclick=deploySite;
   $('btnClear').onclick=function(){ clearForm(); };
   $('btnCfgSave').onclick=saveCfg;
   $('btnRegenSlug').onclick=regenSlug;
