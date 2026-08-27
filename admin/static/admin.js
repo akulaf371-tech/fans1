@@ -125,25 +125,38 @@ function regenSlug(){
 
 /* ---------------- публикация ---------------- */
 function publish(){
+  if(publish._busy) return;             // защита от двойного клика/повтора
+  publish._busy = true;
   var title=$('fTitle').value.trim(), body=$('fBody').value.trim();
-  if(!title && !body){ setStatus($('pubStatus'),'нужен заголовок или текст','err'); return; }
+  if(!title && !body){
+    setStatus($('pubStatus'),'нужен заголовок или текст','err');
+    publish._busy = false;
+    return;
+  }
   var tags=$('fTags').value.split(',').map(function(t){return t.trim();}).filter(Boolean);
   var payload={title:title, body:body, tags:tags,
                slug:$('fSlug').value.trim(), media:mediaItems,
                editing_id:editingId};
   var btn=$('btnPublish');
-  btn.disabled=true; setStatus($('pubStatus'),'публикую и пересобираю сайт…');
+  btn.disabled=true; btn.textContent='⏳ Публикую…';
+  setStatus($('pubStatus'),'сохраняю пост и пересобираю сайт…');
   fetch('/api/post/save',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(payload)})
   .then(function(r){return r.json();})
   .then(function(j){
-    btn.disabled=false;
-    if(!j.ok){ setStatus($('pubStatus'),(j.error||'ошибка').slice(0,300),'err'); return; }
+    if(!j.ok){
+      setStatus($('pubStatus'),(j.error||'ошибка').slice(0,300),'err');
+      return;
+    }
     setStatus($('pubStatus'), j.post.new?'опубликовано ✓':'обновлено ✓','okc');
     clearForm(false);
     loadPosts();
   })
-  .catch(function(e){ btn.disabled=false; setStatus($('pubStatus'),'ошибка сети: '+e,'err'); });
+  .catch(function(e){ setStatus($('pubStatus'),'ошибка сети: '+e,'err'); })
+  .finally(function(){
+    publish._busy = false;
+    $('btnPublish').disabled=false; $('btnPublish').textContent='🚀 Опубликовать';
+  });
 }
 
 function clearForm(resetBanner){
@@ -215,17 +228,22 @@ function delPost(id,title){
 
 /* ---------------- деплой на Vercel ---------------- */
 function deploySite(){
+  if(deploySite._busy) return;
+  deploySite._busy = true;
   var btn=$('btnDeploy');
-  btn.disabled=true;
+  btn.disabled=true; btn.textContent='⏳ Выкладываю…';
   var st=$('pubStatus'); setStatus(st,'выкладываю на fans1.vercel.app… (15–40 сек)');
   fetch('/api/deploy',{method:'POST'})
     .then(function(r){return r.json();})
     .then(function(j){
-      btn.disabled=false;
       if(j.ok){ setStatus(st,'сайт обновлён ✓ https://fans1.vercel.app','okc'); }
       else { setStatus(st,'ошибка деплоя — см. лог в терминале сервера','err'); console.error(j.log||j.error); }
     })
-    .catch(function(e){ btn.disabled=false; setStatus(st,'ошибка сети: '+e,'err'); });
+    .catch(function(e){ setStatus(st,'ошибка сети: '+e,'err'); })
+    .finally(function(){
+      deploySite._busy = false;
+      $('btnDeploy').disabled=false; $('btnDeploy').textContent='☁️ Выложить на сайт';
+    });
 }
 
 /* ---------------- init ---------------- */

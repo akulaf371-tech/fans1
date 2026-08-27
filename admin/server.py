@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import fcntl
 import io
 import json
 import mimetypes
@@ -39,6 +40,48 @@ MAX_UPLOAD = 64 * 1024 * 1024  # 64 МБ на один файл
 
 MONTHS_RU = ["января", "февраля", "марта", "апреля", "мая", "июня",
              "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+
+# ------------------------------------------------------------- serialization
+_DATA_LOCK_PATH = str(DATA) + ".lock"
+_BUILD_LOCK_PATH = str(ROOT / ".build.lock")
+_DEPLOY_LOCK_PATH = str(ROOT / ".deploy.lock")
+
+
+class _FileLock:
+    """Простой межпроцессный лок на файле (fcntl.flock)."""
+
+    def __init__(self, path: str):
+        self._path = path
+
+    def __enter__(self):
+        self._fh = open(self._path, "w")
+        fcntl.flock(self._fh, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *exc):
+        try:
+            fcntl.flock(self._fh, fcntl.LOCK_UN)
+        finally:
+            self._fh.close()
+        return False
+
+
+def data_lock():
+    return _FileLock(_DATA_LOCK_PATH)
+
+
+def build_lock():
+    return _FileLock(_BUILD_LOCK_PATH)
+
+
+def deploy_lock():
+    return _FileLock(_DEPLOY_LOCK_PATH)
+
+
+def _atomic_write_json(path: Path, obj) -> None:
+    tmp = Path(str(path) + ".tmp")
+    tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
 
 
 # ---------------------------------------------------------------- config/data
@@ -77,17 +120,16 @@ def load_posts() -> list:
 
 def save_posts(posts: list) -> None:
     DATA.parent.mkdir(parents=True, exist_ok=True)
-    DATA.write_text(json.dumps(posts, ensure_ascii=False, indent=2),
-                    encoding="utf-8")
+    _atomic_write_json(DATA, posts)
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
-
 def run_build() -> tuple[bool, str]:
-    p = subprocess.run([sys.executable, str(ROOT / "scripts" / "build.py")],
-                       capture_output=True, text=True, timeout=120)
+    with build_lock():
+        p = subprocess.run([sys.executable, str(ROOT / "scripts" / "build.py")],
+                           capture_output=True, text=True, timeout=120)
     out = (p.stdout + p.stderr).strip()
     return p.returncode == 0, out
 
@@ -393,12 +435,13 @@ class Handler(BaseHTTPRequestHandler):
 
             if path == "/api/post/delete":
                 pid = json.loads(self._read_body().decode("utf-8")).get("id")
-                posts = load_posts()
-                left = [p for p in posts if p.get("id") != pid]
-                if len(left) == len(posts):
-                    return self._json({"ok": False, "error": "пост не найден"}, 404)
-                save_posts(left)
-                ok, out = run_build()
+                with data_lock():
+                    posts = load_posts()
+                    left = [p for p in posts if p.get("id") != pid]
+                    if len(left) == len(posts):
+                        return self._json({"ok": False, "error": "пост не найден"}, 404)
+                    save_posts(left)
+                    ok, out = run_build()
                 return self._json({"ok": True, "deleted": pid, "build": out})
 
             if path == "/api/config/save":
@@ -416,10 +459,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": True, "saved": True})
 
             if path == "/api/deploy":
-                d = subprocess.run(
-                    ["vercel", "--prod", "--yes"],
-                    cwd=str(SITE_DIR), capture_output=True, text=True, timeout=300,
-                    env={**os.environ, "CI": "1"})
+                with deploy_lock():
+                    d = subprocess.run(
+                        ["vercel", "--prod", "--yes"],
+                        cwd=str(SITE_DIR), capture_output=True, text=True, timeout=300,
+                        env={**os.environ, "CI": "1"})
                 out = (d.stdout + d.stderr).strip()
                 ok = d.returncode == 0
                 return self._json({"ok": ok, "log": out[-1200:] if ok else out,
@@ -454,48 +498,49 @@ class Handler(BaseHTTPRequestHandler):
                 media.append({"type": t, "url": u,
                               **({"poster": m["poster"]} if m.get("poster") else {})})
 
-        posts = load_posts()
-        ts = now_iso()
-        edit_id = payload.get("editing_id")
-        existing = next((p for p in posts if p.get("id") == edit_id), None)
+        with data_lock():
+            posts = load_posts()
+            ts = now_iso()
+            edit_id = payload.get("editing_id")
+            existing = next((p for p in posts if p.get("id") == edit_id), None)
 
-        if existing:
-            changed = (title != existing.get("title") or body != existing.get("body")
-                       or slug != existing.get("slug")
-                       or media != existing.get("media")
-                       or sorted(payload.get("tags") or []) != sorted(existing.get("tags") or []))
-            pid = existing["id"]
-            created = existing.get("created") or existing.get("date") or ts
-            upd = ts if changed else existing.get("updated")
-        else:
-            pid = "p-%s-%s" % (ts[:10], uuid.uuid4().hex[:6])
-            created = ts
-            upd = None
+            if existing:
+                changed = (title != existing.get("title") or body != existing.get("body")
+                           or slug != existing.get("slug")
+                           or media != existing.get("media")
+                           or sorted(payload.get("tags") or []) != sorted(existing.get("tags") or []))
+                pid = existing["id"]
+                created = existing.get("created") or existing.get("date") or ts
+                upd = ts if changed else existing.get("updated")
+            else:
+                pid = "p-%s-%s" % (ts[:10], uuid.uuid4().hex[:6])
+                created = ts
+                upd = None
 
-        # уникальный slug среди других постов
-        others = [p for p in posts if p.get("id") != pid]
-        taken = {p.get("slug") for p in others}
-        base = slug
-        i = 2
-        while slug in taken:
-            slug = "%s-%d" % (base, i)
-            i += 1
+            # уникальный slug среди других постов
+            others = [p for p in posts if p.get("id") != pid]
+            taken = {p.get("slug") for p in others}
+            base = slug
+            i = 2
+            while slug in taken:
+                slug = "%s-%d" % (base, i)
+                i += 1
 
-        post = {"id": pid, "slug": slug, "title": title, "body": body,
-                "tags": [t.strip("# ") for t in (payload.get("tags") or []) if t.strip()],
-                "media": media,
-                "date": existing.get("date") if existing else created,
-                "created": created}
-        if upd:
-            post["updated"] = upd
+            post = {"id": pid, "slug": slug, "title": title, "body": body,
+                    "tags": [t.strip("# ") for t in (payload.get("tags") or []) if t.strip()],
+                    "media": media,
+                    "date": existing.get("date") if existing else created,
+                    "created": created}
+            if upd:
+                post["updated"] = upd
 
-        if existing:
-            posts[posts.index(existing)] = post
-        else:
-            posts.append(post)
-        save_posts(posts)
+            if existing:
+                posts[posts.index(existing)] = post
+            else:
+                posts.append(post)
+            save_posts(posts)
 
-        ok, out = run_build()
+            ok, out = run_build()
         if not ok:
             return {"ok": False, "error": "сборка не удалась:\n" + out}
         return {"ok": True, "post": {"id": pid, "slug": slug, "title": title,

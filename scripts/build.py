@@ -8,6 +8,7 @@ import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "admin"))
@@ -18,8 +19,6 @@ MONTHS_RU = ["января", "февраля", "марта", "апреля", "м
              "июля", "августа", "сентября", "октября", "ноября", "декабря"]
 
 YT_RE = re.compile(r"(?:youtube\.com/(?:watch\?.*v=|shorts/|embed/)|youtu\.be/)([A-Za-z0-9_-]{6,})")
-
-FIG_CLOSE = "</figure>"
 
 
 def load_json(p: Path, default):
@@ -40,18 +39,18 @@ def parse_date(s: str) -> datetime:
         return datetime.fromtimestamp(0)
 
 
-def media_html(m: dict, cls: str = "") -> str:
-    """HTML одного элемента медиа."""
-    u = esc(m["url"])
-    if m["type"] == "video":
-        return (
-            '<figure class="%s"><video controls playsinline preload="metadata"'
-            ' src="%s"></video></figure>' % (cls, u)
-        )
-    return (
-        '<figure class="%s"><a href="%s" target="_blank" rel="noopener">'
-        '<img loading="lazy" src="%s" alt=""></a></figure>' % (cls, u, u)
-    )
+def fmt_msk(s: str) -> str:
+    """«27 августа 2026 в 18:42» (московское время)."""
+    try:
+        d = parse_date(s).astimezone(ZoneInfo("Europe/Moscow"))
+        return "%d %s %d в %02d:%02d" % (d.day, MONTHS_RU[d.month - 1],
+                                         d.year, d.hour, d.minute)
+    except Exception:
+        return s
+
+
+def sort_key(p: dict):
+    return parse_date(p.get("date", "")), p.get("id", "")
 
 
 def find_youtube(text: str):
@@ -60,7 +59,7 @@ def find_youtube(text: str):
 
 
 def body_to_html(body: str) -> str:
-    """Текст поста -> HTML: абзацы, мини-markdown (@@жирный@@, //курсив//), авто-YT."""
+    """Текст поста -> HTML: абзацы, **жирный**, *курсив*, [ссылки](…), авто-YT."""
     out = []
     for block in re.split(r"\n\s*\n", (body or "").strip()):
         yt = find_youtube(block)
@@ -71,81 +70,114 @@ def body_to_html(body: str) -> str:
                 'frameborder="0" allowfullscreen></iframe></figure>' % esc(yt)
             )
             continue
-        p = block.strip().replace("\n", "<br>")
-        p = esc(p)
+        p = esc(block.strip().replace("\n", "<br>"))
         p = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", p)
         p = re.sub(r"(?<![\w*])\*([^*\n]+)\*(?![\w*])", r"<em>\1</em>", p)
-        p = re.sub(r"\[(.+?)\]\((https?://[^)\s]+)\)", r'<a href="\2" target="_blank" rel="noopener">\1</a>', p)
+        p = re.sub(r"\[(.+?)\]\((https?://[^)\s]+)\)",
+                   r'<a href="\2" target="_blank" rel="noopener">\1</a>', p)
         out.append("<p>%s</p>" % p)
     return "\n".join(out)
 
 
-def img_from(m: dict) -> str:
-    return esc(m["url"]) if m["type"] == "image" else ""
+# --------------------------------------------------------------------- лента
+MAX_FEED_MEDIA = 4      # сколько медиа показывать прямо в ленте
+LONG_TEXT = 340         # длиннее -> кнопка «Показать полностью…»
 
 
-def sort_key(p: dict):
-    return parse_date(p.get("date", "")), p.get("id", "")
+def feed_media_html(media: list) -> str:
+    if not media:
+        return ""
+    shown = media[:MAX_FEED_MEDIA]
+    extra = len(media) - len(shown)
+    cells = []
+    for i, m in enumerate(shown):
+        ex_attr = (' data-extra="+%d"' % extra) if (extra and i == len(shown) - 1) else ""
+        u = esc(m["url"])
+        if m["type"] == "video":
+            cells.append('<figure class="mc"%s><video controls playsinline '
+                         'preload="metadata" src="%s"></video></figure>' % (ex_attr, u))
+        else:
+            cells.append('<figure class="mc"%s><img loading="lazy" src="%s" alt="">'
+                         "</figure>" % (ex_attr, u))
+    return '<div class="fmedia m%d">%s</div>' % (len(shown), "".join(cells))
+
+
+def feed_item(p: dict) -> str:
+    slug = esc(p["slug"])
+    plain_len = len(excerpt_of(p.get("body", "")))
+    has_more = plain_len > LONG_TEXT
+    media = p.get("media") or []
+    tags = "".join('<span class="tag">#%s</span>' % esc(t) for t in p.get("tags", []))
+
+    return (
+        '<article class="feed-item">'
+        '<div class="fhead">'
+        '<img class="ava" src="/assets/favicon.svg" alt="">'
+        '<div><div class="fname">FANS1</div>'
+        '<div class="ftime">%s%s</div></div>'
+        '<a class="flnk" href="/post/%s/">пост ↗</a>'
+        '</div>'
+        '<h2 class="feed-title"><a href="/post/%s/">%s</a></h2>'
+        '<div class="ftextwrap%s">'
+        '<div class="feed-text">%s</div>'
+        '%s'
+        '</div>'
+        '%s'
+        '<div class="ftags">%s</div>'
+        '<div class="ffoot">'
+        '<a class="ff-lnk" href="/post/%s/">Читать полностью →</a>'
+        '<button class="ff-share" type="button" data-url="/post/%s/" onclick="f1Share(this)">🔗 Ссылка</button>'
+        '</div>'
+        '</article>'
+        % (
+            esc(fmt_msk(p.get("date", ""))),
+            (" · 🎬 %d" % len(media)) if media else "",
+            slug,
+            slug,
+            esc(p.get("title", "")),
+            " has-more" if has_more else "",
+            body_to_html(p.get("body", "")),
+            ('<button class="show-more" type="button" onclick="f1Expand(this)">'
+             "Показать полностью…</button>") if has_more else "",
+            feed_media_html(media),
+            tags,
+            slug,
+            slug,
+        )
+    )
 
 
 def build_index(posts: list) -> None:
     tpl = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
-    cards = []
-    for p in sorted(posts, key=sort_key, reverse=True):
-        d = parse_date(p.get("date", ""))
-        date_h = "%d %s %d" % (d.day, MONTHS_RU[d.month - 1], d.year) if d.year else ""
-        excerpt = esc((excerpt_of(p.get("body", "")) or "")[:220])
-        media = p.get("media") or []
-        thumb = ""
-        cls_extra = ""
-        if media:
-            m0 = media[0]
-            if m0["type"] == "image":
-                thumb = '<img loading="lazy" src="%s" alt="">' % esc(
-                    m0["url"].replace("/upload/", "/upload/c_fill,w_900,h_506,q_auto/")
-                )
-            else:
-                thumb = media_html({"url": m0["url"], "type": "video"}, "card__video")
-                cls_extra = "has-video"
-        else:
-            thumb = '<div class="card__nomedia">&#127950;&#65039;</div>'
-        tags = "".join('<a class="tag" href="#%s">#%s</a>' % (esc(t), esc(t)) for t in p.get("tags", []))
-        cards.append(
-            '<article class="card %s">'
-            '<a class="card__thumb %s" href="/post/%s/" aria-label="%s">%s'
-            '<span class="badge-badge">%d 📷</span></a>'
-            '<div class="card__body"><time>%s</time>'
-            '<h2 class="card__title"><a href="/post/%s/">%s</a></h2>'
-            '<p class="card__excerpt">%s%s</p>'
-            '<div class="tags">%s</div></div></article>'
-            % (
-                cls_extra,
-                "" if media else "empty",
-                esc(p["slug"]),
-                esc(p.get("title", "")),
-                thumb,
-                len(media),
-                date_h,
-                esc(p["slug"]),
-                esc(p.get("title", "")),
-                excerpt,
-                "&hellip;" if len(excerpt_of(p.get("body", ""))) > 220 else "",
-                tags,
-            )
-        )
-    posts_html = (
-        '<div class="grid">' + "\n".join(cards) + "</div>"
-        if cards
-        else '<div class="empty">Постов пока нет 🏎️ Зайдите в админку и напишите первый!</div>'
-    )
+    ordered = sorted(posts, key=sort_key, reverse=True)   # сверху НОВОЕ, снизу старое
+    if ordered:
+        posts_html = '<section class="feed">%s</section>' % "\n".join(
+            feed_item(p) for p in ordered)
+    else:
+        posts_html = ('<div class="empty-global">Постов пока нет 🏎️ '
+                      "Зайдите в админку и напишите первый!</div>")
     out = (
         tpl.replace("@PAGE_TITLE@", "FANS1 — фанатский блог о Формуле-1")
-        .replace("@HEADING@", "Лента")
+        .replace("@HEADING_BLOCK@", "")
         .replace("@META_DESCRIPTION@", "Личный фанатский блог о Формуле-1: гонки, команды, драйверы.")
         .replace("@OG_IMAGE@", "")
         .replace("@POSTS@", posts_html)
     )
     (SITE / "index.html").write_text(out, encoding="utf-8")
+
+
+# --------------------------------------------------------------- стр. поста
+def media_html(m: dict, cls: str = "") -> str:
+    u = esc(m["url"])
+    if m["type"] == "video":
+        return ('<figure class="%s"><video controls playsinline preload="metadata"'
+                ' src="%s"></video></figure>' % (cls, u))
+    return ('<figure class="%s"><a href="%s" target="_blank" rel="noopener">'
+            '<img loading="lazy" src="%s" alt=""></a></figure>' % (cls, u, u))
+
+
+def img_from(m: dict) -> str:
+    return esc(m["url"]) if m["type"] == "image" else ""
 
 
 def build_post_page(p: dict) -> None:
@@ -170,8 +202,7 @@ def build_post_page(p: dict) -> None:
     )
 
     ytid = find_youtube(p.get("body", ""))
-    hero_img = img_from(media[0]) if media else ""
-    og_image = (img_from(media[0])
+    og_image = ((img_from(media[0]) if media else "")
                 or ("https://i.ytimg.com/vi/%s/hqdefault.jpg" % ytid if ytid else ""))
 
     out = (
@@ -198,7 +229,8 @@ def build_rss(posts: list) -> None:
             "<item><title>%s</title><link>%s</link>"
             "<guid>%s</guid><pubDate>%s</pubDate>"
             "<description>%s</description></item>"
-            % (esc(p.get("title", "")), link, esc(p["id"]), rfc, esc(excerpt_of(p.get("body", ""))[:300]))
+            % (esc(p.get("title", "")), link, esc(p["id"]), rfc,
+               esc(excerpt_of(p.get("body", ""))[:300]))
         )
     rss = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -233,7 +265,8 @@ def main():
         except Exception as e:
             print("  ! пропуск сломанного поста %s: %s" % (p.get("slug"), e))
     build_rss(posts)
-    print("[build] страниц: 1 главная + %d постов + rss | всего постов в базе: %d" % (ok, len(posts)))
+    print("[build] страниц: 1 главная (лента) + %d постов + rss | всего постов: %d"
+          % (ok, len(posts)))
 
 
 if __name__ == "__main__":

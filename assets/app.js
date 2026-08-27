@@ -8,10 +8,25 @@ function f1ToggleExpand(id){
   if(!el)return;
   el.classList.toggle('is-expanded');
 }
-function f1Copy(el){
-  navigator.clipboard.writeText(window.location.origin+el.getAttribute('href')).then(function(){
-    el.dataset.copied='1';setTimeout(function(){el.removeAttribute('data-copied');},1200);
-  });
+/* «Показать полностью…» — разворот длинного текста в ленте */
+function f1Expand(btn){
+  var w=btn.parentElement;
+  w.classList.add('is-open');
+  btn.remove();
+}
+/* Копирование ссылки на пост */
+function f1Share(btn){
+  var url=window.location.origin+btn.getAttribute('data-url');
+  function done(){ btn.textContent='✓ Скопировано';
+    setTimeout(function(){ btn.textContent='🔗 Ссылка'; },1400); }
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(done);
+  } else {
+    var ta=document.createElement('textarea');
+    ta.value=url; document.body.appendChild(ta); ta.select();
+    try{document.execCommand('copy');done();}catch(e){}
+    ta.remove();
+  }
 }
 document.addEventListener('click',function(e){
   var t=e.target.closest('a[href^="#"]');
