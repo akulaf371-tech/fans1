@@ -134,6 +134,30 @@ def _http_multipart(url: str, fields: dict, files: list, timeout: int = 180) -> 
         raise RuntimeError("нет связи с %s: %s" % (url.split("/")[2], e.reason))
 
 
+def sniff_kind(fname: str, data: bytes, ctype: str) -> str:
+    """Видео или картинка — по Content-Type, расширению и магическим байтам."""
+    ct = (ctype or "").split(";")[0].strip().lower()
+    if ct.startswith("video/"):
+        return "video"
+    if ct.startswith("image/"):
+        return "image"
+    ext = Path(fname).suffix.lower()
+    if ext in {".mp4", ".m4v", ".webm", ".mov", ".mkv", ".avi", ".ogv"}:
+        return "video"
+    if ext in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".bmp"}:
+        return "image"
+    head = (data or b"")[:16]
+    if head[:4] == b"\x89PNG" or head[:4] == b"GIF8" or head[:3] == b"\xff\xd8\xff":
+        return "image"
+    if len(head) >= 8 and head[4:8] == b"ftyp":      # mp4 / mov
+        return "video"
+    if head[:4] == b"\x1a\x45\xdf\xa3":              # webm / mkv
+        return "video"
+    if head[:4] == b"RIFF" and (data or b"")[8:12] == b"WEBP":
+        return "image"
+    return "image"
+
+
 def upload_local(fname: str, data: bytes, ctype: str) -> tuple[str, str]:
     d = UPLOADS_FALLBACK / datetime.now().strftime("%Y-%m")
     d.mkdir(parents=True, exist_ok=True)
@@ -142,12 +166,12 @@ def upload_local(fname: str, data: bytes, ctype: str) -> tuple[str, str]:
                         Path(fname).suffix.lower())
     (d / safe).write_bytes(data)
     rel = "/uploads/%s/%s" % (d.name, safe)
-    kind = "video" if ctype.startswith("video") else "image"
+    kind = sniff_kind(fname, data, ctype)
     return kind, rel
 
 
 def upload_to_cloud(fname: str, data: bytes, ctype: str, cfg: dict) -> tuple[str, str]:
-    kind = "video" if ctype.startswith("video") else "image"
+    kind = sniff_kind(fname, data, ctype)
     cl = cfg.get("cloud") or {}
     prov = cl.get("provider")
 
@@ -287,25 +311,48 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/" or path.endswith("/admin"):
             f = STATIC / "admin.html"
             return self._send(200, f.read_bytes(), "text/html; charset=utf-8")
-        if path.startswith("/static/") or path.startswith("/assets/"):
-            f = ROOT / path.replace("/static/", "admin/static/")
-            if path.startswith("/assets/"):
-                f = STATIC / path.lstrip("/")
-            if f.is_file() and f.resolve().is_relative_to(ROOT.resolve()):
+        if path.startswith("/static/"):
+            base = STATIC.resolve()
+            f = (base / path[len("/static/"):]).resolve()
+            if f.is_file() and f.is_relative_to(base):
+                ct = mimetypes.guess_type(str(f))[0] or "application/octet-stream"
+                return self._send(200, f.read_bytes(), ct)
+            return self._send(404, b"not found", "text/plain")
+        if path.startswith("/assets/"):
+            base = (ROOT / "assets").resolve()
+            f = (base / path[len("/assets/"):]).resolve()
+            if f.is_file() and f.is_relative_to(base):
                 ct = mimetypes.guess_type(str(f))[0] or "application/octet-stream"
                 return self._send(200, f.read_bytes(), ct)
             return self._send(404, b"not found", "text/plain")
 
         # предпросмотр собранного сайта
         if path == "/site":
-            path = "/index.html"
+            f = SITE_DIR / "index.html"
+            if f.is_file():
+                return self._send(200, f.read_bytes(), "text/html; charset=utf-8")
+            return self._send(404, "сайт ещё не собран — опубликуй первый пост".encode("utf-8"),
+                              "text/plain; charset=utf-8")
         if path.startswith("/site/"):
-            rel = path[len("/site/"):] + ("/index.html" if path.endswith("/") else "")
-            f = SITE_DIR / rel
+            f = SITE_DIR / path[len("/site/"):]
+            if f.is_dir():
+                f = f / "index.html"
             if f.is_file() and f.resolve().is_relative_to(SITE_DIR.resolve()):
+                if f.suffix == ".html":
+                    ct = "text/html; charset=utf-8"
+                else:
+                    ct = mimetypes.guess_type(str(f))[0] or "application/octet-stream"
+                return self._send(200, f.read_bytes(), ct)
+            return self._send(404, "нет такой страницы сайта".encode("utf-8"),
+                              "text/plain; charset=utf-8")
+
+        # локальные загрузки (превью медиа из public/uploads)
+        if path.startswith("/uploads/"):
+            f = UPLOADS_FALLBACK / path[len("/uploads/"):]
+            if f.is_file() and f.resolve().is_relative_to(UPLOADS_FALLBACK.resolve()):
                 ct = mimetypes.guess_type(str(f))[0] or "application/octet-stream"
                 return self._send(200, f.read_bytes(), ct)
-            return self._send(404, "нет такой страницы сайта".encode(), "text/plain; charset=utf-8")
+            return self._send(404, b"not found", "text/plain")
 
         self._send(404, b"not found", "text/plain")
 

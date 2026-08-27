@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "admin"))
-from md import parse_body, excerpt_of, fmt_date_ru  # noqa: E402
+from md import excerpt_of  # noqa: E402
 
 SITE = ROOT / "_site"
 MONTHS_RU = ["января", "февраля", "марта", "апреля", "мая", "июня",
@@ -213,6 +213,10 @@ def build_rss(posts: list) -> None:
 def main():
     SITE.mkdir(parents=True, exist_ok=True)
     shutil.copytree(ROOT / "assets", SITE / "assets", dirs_exist_ok=True)
+    # локально загруженные медиа тоже должны попасть на сайт
+    pub_uploads = ROOT / "public" / "uploads"
+    if pub_uploads.is_dir():
+        shutil.copytree(pub_uploads, SITE / "uploads", dirs_exist_ok=True)
 
     posts = load_json(ROOT / "content" / "posts.json", [])
     for i, p in enumerate(posts):
