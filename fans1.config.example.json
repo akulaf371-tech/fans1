@@ -1,0 +1,10 @@
+{
+  "site_title": "FANS1",
+  "tagline": "фанатский блог о Формуле-1",
+  "cloud": {
+    "provider": "",
+    "imgbb_key": "",
+    "cloudinary_cloud": "",
+    "cloudinary_preset": ""
+  }
+}

@@ -1,0 +1,11 @@
+# ключи облаков (imgbb / cloudinary) — не коммитим
+fans1.config.json
+
+# локальные билды и загруженные файлы (публичный сайт собирается на лету)
+_site/
+public/
+
+# python
+__pycache__/
+*.pyc
+.venv/

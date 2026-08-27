@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>@PAGE_TITLE@</title>
+<meta name="description" content="@META_DESCRIPTION@">
+<meta property="og:title" content="@PAGE_TITLE@">
+<meta property="og:description" content="@META_DESCRIPTION@">
+<meta property="og:type" content="website">
+<meta property="og:image" content="@OG_IMAGE@">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="alternate" type="application/rss+xml" title="FANS1 — RSS" href="/feed.xml">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap topbar__in">
+    <a class="logo" href="/">FAN<span>S1</span></a>
+    <span class="logo-sub">фанатский блог о Формуле-1</span>
+    <a class="rss-link" href="/feed.xml" title="RSS-лента">RSS</a>
+  </div>
+</header>
+<main class="wrap">
+<h1 class="page-title">@HEADING@</h1>
+@POSTS@
+</main>
+<footer class="footer wrap">FANS1 — фанатский блог о Формуле-1 · сделано на Vercel</footer>
+<script src="/assets/app.js" defer></script>
+</body>
+</html>

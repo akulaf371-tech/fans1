@@ -1,0 +1,65 @@
+/* FANS1 — публичный сайт */
+:root {
+  --bg: #0d1013;
+  --bg2: #14181d;
+  --panel: #181d23;
+  --line: #262e37;
+  --txt: #e8e6e3;
+  --mut: #96a2b1;
+  --acc: #e10600;
+  --rad: 14px;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--txt);
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  font-size: 16px; line-height: 1.6;
+}
+.wrap { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+.topbar { background: var(--bg2); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+.topbar__in { display: flex; align-items: baseline; gap: 12px; padding: 16px 20px; }
+.logo { color: #fff; text-decoration: none; font-weight: 800; letter-spacing: .08em; font-size: 20px; }
+.logo span { color: var(--acc); }
+.logo-sub { color: var(--mut); font-size: 13px; }
+.rss-link { margin-left: auto; color: var(--acc); text-decoration: none; font-size: 13px; border: 1px solid var(--line); padding: 3px 10px; border-radius: 999px; }
+
+.page-title { margin: 26px 0 18px; font-size: 28px; }
+
+/* сетка карточек */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px; padding-bottom: 40px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--rad); overflow: hidden; transition: .15s; display:flex; flex-direction:column; }
+.card:hover { transform: translateY(-3px); border-color: #39434e; }
+.card__thumb { position: relative; display: block; aspect-ratio: 16/9; background: #000; overflow: hidden; }
+.card__thumb img, .card__thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.card__thumb.empty { display: flex; align-items: center; justify-content: center; font-size: 42px; opacity:.6; }
+.badge-badge { position: absolute; right: 8px; bottom: 8px; background: rgba(0,0,0,.65); color: #fff; font-size: 12px; padding: 2px 9px; border-radius: 999px; }
+.card__body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; flex:1; }
+.card__body time { color: var(--mut); font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em; }
+.card__title { margin: 0; font-size: 19px; line-height: 1.35; }
+.card__title a { color: var(--txt); text-decoration: none; }
+.card__title a:hover { color: var(--acc); }
+.card__excerpt { margin: 0; color: var(--mut); font-size: 14px; flex: 1; }
+.tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.tag { color: var(--acc); text-decoration: none; font-size: 12px; background: rgba(225,6,0,.09); border: 1px solid rgba(225,6,0,.25); padding: 2px 9px; border-radius: 999px; }
+.empty-global { padding: 60px 20px; text-align: center; color: var(--mut); }
+
+/* страница поста */
+.crumbs { margin: 22px 0 6px; }
+.crumbs a { color: var(--mut); text-decoration: none; font-size: 14px; }
+.crumbs a:hover { color: var(--acc); }
+.post { max-width: 760px; margin: 0 auto; padding-bottom: 50px; }
+.post__date { color: var(--mut); font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
+.post__title { margin: 6px 0 20px; font-size: 32px; line-height: 1.25; }
+.post__hero figure { margin: 0 0 18px; }
+.post__hero img, .post__hero video { width: 100%; border-radius: var(--rad); display: block; }
+.post__content p { margin: 0 0 16px; }
+.post__content a { color: #ff6b64; }
+.embed-yt { margin: 0 0 18px; }
+.embed-yt iframe { width: 100%; aspect-ratio: 16/9; border: 0; border-radius: var(--rad); }
+.gallery { margin-top: 10px; }
+.btn-media { background: var(--panel); color: var(--txt); border: 1px solid var(--line); border-radius: 999px; padding: 8px 16px; cursor: pointer; margin: 12px 0; font: inherit; font-size: 14px; }
+.grid-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.gal-item { margin: 0; }
+.gal-item img, .gal-item video { width: 100%; border-radius: 10px; display: block; cursor: zoom-in; background:#000; }
+.post__updated { color: var(--mut); font-size: 13px; }
+.footer { color: var(--mut); font-size: 13px; padding: 30px 20px 40px; border-top: 1px solid var(--line); margin-top: 30px; }

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FANS1 — админка</title>
+<link rel="icon" href="/site/assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar admin-bar">
+  <div class="wrap topbar__in">
+    <a class="logo" href="/">FAN<span>S1</span></a>
+    <span class="logo-sub">админка</span>
+    <span class="spacer"></span>
+    <span id="cloudBadge" class="badge"></span>
+    <a class="rss-link" href="/site/" target="_blank">Предпросмотр сайта ↗</a>
+  </div>
+</header>
+
+<main class="wrap admin-grid">
+
+  <!-- редактор -->
+  <section class="panel">
+    <h2 id="edTitleBar" class="panel__h">Новый пост</h2>
+
+    <label class="lbl" for="fTitle">Заголовок</label>
+    <input id="fTitle" class="inp" placeholder="Например: Гран-при Монако — разбор квалификации" maxlength="160">
+
+    <label class="lbl" for="fBody">Текст поста</label>
+    <textarea id="fBody" class="inp ta" placeholder="Пиши текст. Пустая строка = новый абзац.&#10;&#10;Жирный — **так**, курсив — *так*, ссылка — [текст](https://...)&#10;Ссылку на YouTube вставь просто отдельной строкой — станет видео-плеером."></textarea>
+
+    <label class="lbl" for="fTags">Теги (через запятую)</label>
+    <input id="fTags" class="inp" placeholder="монако, квалификация, ферстапен">
+
+    <div class="lbl-row">
+      <span class="lbl">Адрес (slug)</span>
+      <button id="btnRegenSlug" class="mini" type="button">обновить из заголовка</button>
+    </div>
+    <input id="fSlug" class="inp" placeholder="avto-translit" maxlength="70">
+
+    <div class="lbl">Фото и видео</div>
+    <div id="dropzone" class="dropzone">
+      <input id="fFiles" type="file" accept="image/*,video/*" multiple hidden>
+      <p><b>Перетащи файлы сюда</b> или нажми, чтобы выбрать<br>
+      <small>фото до 32 МБ · видео до 64 МБ — зальются в облако автоматически</small></p>
+    </div>
+    <div id="mediaGrid" class="mg-grid"></div>
+    <div id="upStatus" class="hint"></div>
+
+    <div class="actions">
+      <button id="btnPublish" class="btn primary">🚀 Опубликовать</button>
+      <button id="btnClear" class="btn ghost" type="button">Очистить форму</button>
+      <span id="pubStatus" class="hint"></span>
+    </div>
+    <p id="editBanner" class="editbanner hidden">Редактируется существующий пост — при сохранении он обновится.</p>
+  </section>
+
+  <!-- список -->
+  <section class="panel">
+    <h2 class="panel__h">Опубликованные</h2>
+    <div id="postList" class="plist"><p class="hint">загрузка…</p></div>
+  </section>
+
+  <!-- настройки -->
+  <section class="panel wide">
+    <h2 class="panel__h">Куда грузить медиа (бесплатные облака)</h2>
+    <div class="cfg-grid">
+      <div>
+        <label class="radio"><input type="radio" name="prov" value="">Локально <small>(лежит в проекте, попадёт на сайт после пуша в git — без ключей)</small></label>
+        <label class="radio"><input type="radio" name="prov" value="imgbb">imgbb.com <small>(картинки, 32 МБ, нужен только API-ключ)</small></label>
+        <label class="radio"><input type="radio" name="prov" value="cloudinary">Cloudinary <small>(фото И видео, юнитед-грейд бесплатно — нужны имя облака и unsigned-preset)</small></label>
+      </div>
+      <div>
+        <label class="lbl">imgbb API key <em id="mImgbb" class="mask"></em></label>
+        <input id="cImgbb" class="inp" placeholder="старый ключ сохранён; пусто = не менять" autocomplete="off">
+        <label class="lbl">Cloudinary: имя облака</label>
+        <input id="cCloud" class="inp" placeholder="например, dvx-example" autocomplete="off">
+        <label class="lbl">Cloudinary unsigned upload preset <em id="mPreset" class="mask"></em></label>
+        <input id="cPreset" class="inp" placeholder="имя пресета" autocomplete="off">
+        <button id="btnCfgSave" class="btn" type="button">Сохранить настройки</button>
+        <span id="cfgStatus" class="hint"></span>
+        <details class="howto">
+          <summary>Где взять ключи?</summary>
+          <ol>
+            <li><b>imgbb:</b> зарегистрируйся на api.imgbb.com → ключ в личном кабинете.</li>
+            <li><b>Cloudinary:</b> Console → Settings → Upload → «Add upload preset», тип <i>Unsigned</i>. Имя облака видно справа сверху консоли.</li>
+          </ol>
+        </details>
+      </div>
+    </div>
+  </section>
+</main>
+<script src="/static/admin.js"></script>
+</body>
+</html>
